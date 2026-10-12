@@ -108,7 +108,7 @@ Other file and folder dialogs retain their existing filesystem selection.
 +					asAttachment: async () => {
 +						const uris = await fileDialogService.showOpenDialog({
 +							canSelectFiles: true, canSelectFolders: false, canSelectMany: true,
-+							filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff'] }]
++							filters: [{ name: 'Android Gallery Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff'] }]
 +						});
 +						if (!uris) { return undefined; }
 +						return Promise.all(uris.map(async uri => {

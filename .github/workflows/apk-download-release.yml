@@ -1,0 +1,50 @@
+name: Publish image fix APK
+
+on:
+  push:
+    branches: [apk-downloads]
+    paths: ['.github/workflows/apk-download-release.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN: '38250523421'
+      SOURCE_COMMIT: '7387cf0ed269839f0c1cf14aa765b4edba5de049'
+      RELEASE_TAG: image-fix-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Retrieve and verify the built APK
+        run: |
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name debug-apk --dir downloaded
+          cp downloaded/app-debug.apk VSCodroid-image-fix.apk
+          echo '8f6f27111ba4ac5413da1d2fa5406484717e34ef2e68f12fb6f0e72459cb8b5e  VSCodroid-image-fix.apk' > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          cat > RELEASE_NOTES.md <<'NOTES'
+          Unofficial VSCodroid test build with Android gallery image selection and image clipboard support.
+
+          - Android 13+ on ARM64 is required.
+          - Installs separately as com.vscodroid.debug.
+          - Build, unit tests, lint and APK signature verification passed. Device testing is still needed.
+          - Source: https://github.com/faizeranoyodev/VSCodroid/tree/7387cf0ed269839f0c1cf14aa765b4edba5de049
+
+          Download VSCodroid-image-fix.apk below. SHA256SUMS contains its checksum.
+          NOTES
+      - name: Publish the download
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" VSCodroid-image-fix.apk SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" VSCodroid-image-fix.apk SHA256SUMS --repo "$GITHUB_REPOSITORY" --target "$SOURCE_COMMIT" --title 'VSCodroid image attachment test APK' --notes-file RELEASE_NOTES.md
+          fi

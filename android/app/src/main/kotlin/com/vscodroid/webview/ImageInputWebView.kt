@@ -41,10 +41,11 @@ class ImageInputWebView @JvmOverloads constructor(
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
         val original = super.onCreateInputConnection(outAttrs) ?: return null
         if (!imageScriptAvailable) return original
-        outAttrs.contentMimeTypes = arrayOf("image/png", "image/jpeg", "image/gif", "image/webp")
+        val mimeTypes = arrayOf("image/png", "image/jpeg", "image/gif", "image/webp")
+        outAttrs.contentMimeTypes = mimeTypes
         return object : InputConnectionWrapper(original, false) {
             override fun commitContent(content: InputContentInfo, flags: Int, opts: Bundle?): Boolean {
-                val supported = outAttrs.contentMimeTypes.any { content.description.hasMimeType(it) }
+                val supported = mimeTypes.any { content.description.hasMimeType(it) }
                 val host = Uri.parse(url ?: "").host
                 if (closed || !supported || content.contentUri.scheme != "content" ||
                     host !in setOf("127.0.0.1", "localhost", "::1")) return false

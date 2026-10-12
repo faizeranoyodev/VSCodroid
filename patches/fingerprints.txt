@@ -306,6 +306,7 @@
 # workbench.js `initialWorkspaceSettings` occurs 0 times.
 0027 workspace settings from the page|out/vs/code/browser/workbench/workbench.js|options?.initialWorkspaceSettings
 
-0028 Android image picker|out/vs/code/browser/workbench/workbench.js|Android image attachments must be 20 MB or smaller
+0028 Android image picker|out/vs/code/browser/workbench/workbench.js|Android attachments must be 20 MB or smaller
 0028 gallery menu|out/vs/code/browser/workbench/workbench.js|Android Gallery Images
 0028 gallery translation|out/nls.messages.js|Image from Gallery...
+0028 Codex attachment dialog|out/vs/workbench/api/node/extensionHostProcess.js|VSCodroid Codex attachments

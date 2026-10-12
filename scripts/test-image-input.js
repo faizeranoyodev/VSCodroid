@@ -55,7 +55,7 @@ main.api.begin('bad-mime'); main.api.deliver('bad-mime', { mime: 'text/plain', b
 assert.equal(nested.events.length, 1);
 const native = fs.readFileSync('android/app/src/main/kotlin/com/vscodroid/webview/ImageInputWebView.kt', 'utf8');
 assert.match(native, /override fun onCreateInputConnection/);
-assert.match(native, /contentMimeTypes = arrayOf/);
+assert.match(native, /outAttrs.contentMimeTypes = mimeTypes/);
 assert.match(native, /content\.requestPermission\(\)/);
 assert.match(native, /finally \{\s*if \(granted\) content.releasePermission/);
 assert.match(native, /images.shutdown\(\)/);

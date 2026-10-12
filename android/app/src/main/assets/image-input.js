@@ -40,43 +40,13 @@
         target.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
         return true;
     }
-    async function read(id) {
-        try {
-            const items = await navigator.clipboard.read();
-            for (const item of items) {
-                const mime = item.types.find(type => ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(type));
-                if (!mime) continue;
-                const blob = await item.getType(mime);
-                if (blob.size > 20 * 1024 * 1024) return;
-                const reader = new FileReader();
-                reader.onload = () => deliver(id, { mime, base64: reader.result.split(',')[1] });
-                reader.readAsDataURL(blob);
-                return;
-            }
-        } catch (error) { console.error('VSCodroid image clipboard read failed', error); }
-    }
     window.addEventListener('message', event => {
         const message = event.data;
         if (!message || message.type !== prefix || typeof message.id !== 'string') return;
         if (event.source === window.parent && !root) {
             if (message.action === 'begin') begin(message.id);
             if (message.action === 'deliver') deliver(message.id, message.image);
-        } else if (event.source === frame(document.activeElement) && message.action === 'read') {
-            if (!begin(message.id)) return;
-            if (root) read(message.id);
-            else window.parent.postMessage(message, '*');
         }
     });
-    // Normal clipboard paste inside extension frames cannot access the native
-    // clipboard bridge. Ask the focused parent chain to perform that read.
-    if (!root) document.addEventListener('paste', event => {
-        if (!event.isTrusted || !editable(document.activeElement) || !event.clipboardData ||
-            event.clipboardData.files.length || event.clipboardData.getData('text/plain') ||
-            event.clipboardData.getData('text/html')) return;
-        const id = crypto.randomUUID();
-        if (!begin(id)) return;
-        event.preventDefault();
-        window.parent.postMessage({ type: prefix, action: 'read', id }, '*');
-    }, true);
     window.__vscodroidImageInput = { begin, deliver };
 })();

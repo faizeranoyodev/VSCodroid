@@ -49,8 +49,8 @@ It accepts explicitly committed content URIs, reads them on a bounded worker,
 and releases temporary permissions after reading. Document-start code routes
 the resulting paste event through the focused frame chain to the composer.
 Focus changes, expired requests and unrelated message senders are rejected.
-Ordinary empty clipboard paste events in extension frames use the top-level
-clipboard bridge without sharing its authorization token.
+Only native keyboard commits initiate this delivery; extension frames cannot
+request native clipboard reads through the message channel.
 
 Device testing must cover Codex + selection, Gboard image insertion, clipboard
 paste, cancellation and navigating away while an image is loading.

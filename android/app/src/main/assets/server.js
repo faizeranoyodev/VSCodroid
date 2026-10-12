@@ -778,6 +778,9 @@ if (!fs.existsSync(rehEntryPoint)) {
         '--host', HOST,
         '--port', String(PORT),
         '--accept-server-license-terms',
+        // The web client reads proposed API access from this server flag;
+        // rewriting product.json alone does not reach its compiled product map.
+        '--enable-proposed-api', 'openai.chatgpt',
         // Stops the server pointing BROWSER at a script that cannot run.
         //
         // Without the flag the extension host is handed

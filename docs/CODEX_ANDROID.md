@@ -19,7 +19,9 @@ architecture and segment alignment. The helper binary is unchanged.
 
 The server grants `chatSessionsProvider` and `languageModelProxy` to
 `openai.chatgpt` through its product configuration, matching this version's
-manifest. No global proposed-API permission is granted.
+manifest. It also passes `--enable-proposed-api openai.chatgpt` to the server,
+which forwards the permission to the browser workbench. No global proposed-API
+permission is granted.
 
 The downloadable APK uses a separate package, `com.vscodroid.codextest`,
 because hosted CI debug signing keys can differ between runs. It preserves your

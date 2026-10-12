@@ -128,11 +128,14 @@ const UPSTREAM = JSON.stringify({ nameShort: 'Code - OSS', version: '1.133.0', q
 
 // 1. A valid file is rewritten with the overrides, and nothing is left beside it.
 {
-    const dir = fixture(UPSTREAM);
+    const dir = fixture(UPSTREAM, { serverMain: 'console.log("SERVER_ARGS=" + JSON.stringify(process.argv.slice(2))); process.exit(0);\n' });
     const run = boot(dir);
     assert.strictEqual(run.status, 0, `a valid product.json should boot cleanly:\n${run.output}`);
 
     const product = JSON.parse(fs.readFileSync(path.join(dir, 'vscode-reh', 'product.json'), 'utf8'));
+    const serverArgs = JSON.parse(/SERVER_ARGS=(\[.*\])/.exec(run.output)[1]);
+    assert.equal(serverArgs.filter(arg => arg === '--enable-proposed-api').length, 1);
+    assert.equal(serverArgs[serverArgs.indexOf('--enable-proposed-api') + 1], 'openai.chatgpt', 'the web client was not given scoped Codex proposed API access');
     assert.strictEqual(product.nameShort, 'VSCodroid', 'the overrides were not applied');
     assert.strictEqual(product.version, '1.133.0', 'an upstream key was lost');
     assert.deepStrictEqual(product.extensionEnabledApiProposals['sample.allowed'], ['chatSessionsProvider'], 'an existing extension API grant was lost');

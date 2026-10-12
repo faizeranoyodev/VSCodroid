@@ -80,6 +80,7 @@ import com.vscodroid.webview.DownloadHost
 import com.vscodroid.webview.DownloadOutcome
 import com.vscodroid.webview.VSCodroidWebChromeClient
 import com.vscodroid.webview.VSCodroidWebView
+import com.vscodroid.webview.ImageInputWebView
 import com.vscodroid.webview.VSCodroidWebViewClient
 import com.vscodroid.webview.addPageColorListener
 import com.vscodroid.webview.addPlainTextPageScript
@@ -6009,7 +6010,7 @@ class MainActivity : AppCompatActivity() {
         extraKeyRow?.keyInjector = null
         wv.destroy()
 
-        val newWebView = WebView(this)
+        val newWebView = ImageInputWebView(this)
         newWebView.id = R.id.webView
         // Weight, not the default wrap_content: the replacement has to claim the
         // height the key row leaves, the same as the one declared in the layout.

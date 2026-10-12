@@ -1,4 +1,4 @@
-# Codex startup test build
+# Codex image input test build
 
 This build supports the user-installed `openai.chatgpt` IDE extension version
 **26.908.40401** on ARM64. Keep that version installed while testing; turn off
@@ -23,7 +23,7 @@ manifest. It also passes `--enable-proposed-api openai.chatgpt` to the server,
 which forwards the permission to the browser workbench. No global proposed-API
 permission is granted.
 
-The downloadable APK uses a separate package, `com.vscodroid.codextest`,
+The downloadable APK uses a separate package, `com.vscodroid.codeximages`,
 because hosted CI debug signing keys can differ between runs. It preserves your
 previous app and its data. Force-stop the previous VSCodroid app, install and
 open this test app, then install Codex 26.908.40401 and sign in. The terminal command from the earlier diagnostic now redirects to the
@@ -37,3 +37,20 @@ or change its sandbox configuration. If a runtime failure remains, the Codex
 Output channel and the `[VSCodroid Codex]` extension host message identify it.
 
 Original source: https://github.com/openai/codex/tree/b5bffd3ec4db487e7e3dec59663875b0ef7b72ca
+
+## Image attachments
+
+Codex file-only dialogs use Android's document picker, preserving filters and
+multiple selection. Selected files are copied into remote-accessible attachment
+paths; each file is limited to 20 MB. Folder selection remains in the workspace.
+
+The WebView advertises PNG, JPEG, GIF and WebP to Android image keyboards.
+It accepts explicitly committed content URIs, reads them on a bounded worker,
+and releases temporary permissions after reading. Document-start code routes
+the resulting paste event through the focused frame chain to the composer.
+Focus changes, expired requests and unrelated message senders are rejected.
+Ordinary empty clipboard paste events in extension frames use the top-level
+clipboard bridge without sharing its authorization token.
+
+Device testing must cover Codex + selection, Gboard image insertion, clipboard
+paste, cancellation and navigating away while an image is loading.

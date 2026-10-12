@@ -12,7 +12,7 @@
     android:orientation="vertical">
 
     <!-- VS Code Web UI rendered in WebView -->
-    <WebView
+    <com.vscodroid.webview.ImageInputWebView
         android:id="@+id/webView"
         android:layout_width="match_parent"
         android:layout_height="0dp"

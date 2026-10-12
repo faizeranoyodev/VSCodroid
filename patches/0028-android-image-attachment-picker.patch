@@ -1,6 +1,6 @@
 Route image attachment dialogs through Android, and copy selected bytes to the remote provider.
 Add a gallery entry to the chat attachment menu and WebP clipboard support.
-Other file and folder dialogs retain their existing filesystem selection.
+Codex file-only attachment dialogs also use the picker; folders retain filesystem selection.
 
 --- a/src/vs/workbench/services/dialogs/browser/fileDialogService.ts
 +++ b/src/vs/workbench/services/dialogs/browser/fileDialogService.ts
@@ -23,8 +23,8 @@ Other file and folder dialogs retain their existing filesystem selection.
 +		const imageExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff']);
 +		const extensions = options.filters?.flatMap(filter => filter.extensions.map(extension => extension.replace(/^\./, '').toLowerCase())) ?? [];
 +		if (androidWindow.__vscodroid?.authToken && options.canSelectFiles !== false && !options.canSelectFolders &&
-+			extensions.some(extension => imageExtensions.has(extension))) {
-+			return this.pickAndroidImages(options, androidWindow, extensions.filter(extension => imageExtensions.has(extension)));
++			(options.title === 'VSCodroid Codex attachments' || extensions.some(extension => imageExtensions.has(extension)))) {
++			return this.pickAndroidImages(options, androidWindow, extensions.filter(extension => /^[a-z0-9]+$/.test(extension))));
 +		}
 +
  		if (this.shouldUseSimplified(schema)) {
@@ -56,7 +56,7 @@ Other file and folder dialogs retain their existing filesystem selection.
 +			return undefined;
 +		}
 +		if (files.some(file => file.size > 20 * 1024 * 1024)) {
-+			throw new Error('Android image attachments must be 20 MB or smaller');
++			throw new Error('Android attachments must be 20 MB or smaller');
 +		}
 +		// Store through the remote provider so extensions can read the returned
 +		// URIs. A content:// URI or browser-only blob cannot be read by Node.
@@ -156,3 +156,15 @@ Other file and folder dialogs retain their existing filesystem selection.
  			'image/png',
  			'image/jpeg',
  			'image/jpg',
+--- a/src/vs/workbench/api/common/extHost.api.impl.ts
++++ b/src/vs/workbench/api/common/extHost.api.impl.ts
+@@ -924,3 +924,9 @@
+ 			showOpenDialog(options) {
++				// Codex's unfiltered attachment picker otherwise opens the remote
++				// filesystem. Mark only file dialogs from this extension; the
++				// Android browser service chooses the native picker when available.
++				if (extension.identifier.value === 'openai.chatgpt' && options?.canSelectFiles !== false && !options?.canSelectFolders) {
++					options = { ...options, title: 'VSCodroid Codex attachments' };
++				}
+ 				return extHostDialogs.showOpenDialog(options);
+ 			},

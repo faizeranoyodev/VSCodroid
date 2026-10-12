@@ -33,7 +33,7 @@ function fixture(files, { cancel = false, failWrite = false } = {}) {
     const context = { Array, Uint8Array, Promise, Error, Schemas: { vscodeRemote: 'vscode-remote' },
         joinPath: (...parts) => parts.join('/'), VSBuffer: { wrap: bytes => bytes } };
     const pick = vm.runInNewContext(source + '\npickAndroidImages', context);
-    return { input, writes, folders, deleted, run: options => pick.call(services, options, targetWindow, ['png', 'jpg']) };
+    return { input, writes, folders, deleted, run: (options, extensions = ['png', 'jpg']) => pick.call(services, options, targetWindow, extensions) };
 }
 (async () => {
     const image = name => ({ name, size: 4, arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer });
@@ -46,6 +46,13 @@ function fixture(files, { cancel = false, failWrite = false } = {}) {
     assert.notEqual(result[0], result[1], 'same names must not overwrite each other');
     assert.equal(result[0], 'vscode-remote://device/home/.vscodroid/attachments/unique/0-.._same.png');
     assert.deepEqual(Array.from(f.writes[0][1]), [1, 2, 3, 4]);
+    const generic = fixture([image('document.pdf')]);
+    await generic.run({ canSelectMany: false }, []);
+    assert.equal(generic.input.accept, '', 'unfiltered Codex attachments allow any document');
+    assert.equal(generic.input.multiple, false);
+    const filtered = fixture([image('notes.txt')]);
+    await filtered.run({}, ['txt', 'md']);
+    assert.equal(filtered.input.accept, '.txt,.md');
     const canceled = fixture([], { cancel: true });
     assert.equal(await canceled.run({}), undefined);
     assert.equal(canceled.folders.length, 0);
@@ -56,5 +63,19 @@ function fixture(files, { cancel = false, failWrite = false } = {}) {
     const failed = fixture([image('image.png')], { failWrite: true });
     await assert.rejects(failed.run({}), /disk full/);
     assert.equal(failed.deleted.length, 1, 'partial imports must be removed');
+    const apiPatch = patch.slice(patch.indexOf('--- a/src/vs/workbench/api/common/extHost.api.impl.ts'));
+    const apiAdded = apiPatch.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++') || line.startsWith(' ')).map(line => line.slice(1)).join('\n');
+    const body = apiAdded.slice(apiAdded.indexOf('showOpenDialog(options) {') + 'showOpenDialog(options) {'.length, apiAdded.lastIndexOf('},'));
+    for (const [id, options, marked] of [
+        ['openai.chatgpt', {}, true], ['openai.chatgpt', undefined, true],
+        ['openai.chatgpt', { canSelectFolders: true }, false],
+        ['openai.chatgpt', { canSelectFiles: false }, false], ['other.extension', {}, false],
+    ]) {
+        const sandbox = { extension: { identifier: { value: id } }, extHostDialogs: { showOpenDialog: o => o }, options };
+        const result = vm.runInNewContext('(function(options) {' + body + '})(options)', sandbox);
+        assert.equal(result?.title === 'VSCodroid Codex attachments', marked);
+        if (!marked) assert.equal(result, options);
+        else if (options) assert.notEqual(result, options, 'caller options remain untouched');
+    }
     console.log('PASS: gallery MIME filter, multiple images, remote URIs, bytes, cancel, size limit and failed-write cleanup');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -138,7 +138,7 @@ android {
         // browser simply times out.
         @Suppress("OldTargetApi")
         targetSdk = 36
-        versionCode = 16
+        versionCode = 17
         versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -277,10 +277,10 @@ android {
             isMinifyEnabled = false
             // CI test builds use a separate package because hosted runners generate
             // fresh debug signing keys; never require uninstalling the previous app.
-            applicationIdSuffix = if (providers.gradleProperty("codexTestBuild").orNull == "true") {
-                ".codextest"
-            } else {
-                ".debug"
+            applicationIdSuffix = when (providers.gradleProperty("codexTestBuild").orNull) {
+                "images" -> ".codeximages"
+                "true" -> ".codextest"
+                else -> ".debug"
             }
             versionNameSuffix = "-debug"
             // Which of the 2000-odd unit tests actually reach a line, answered by

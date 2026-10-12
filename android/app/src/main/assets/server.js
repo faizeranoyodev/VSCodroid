@@ -251,7 +251,8 @@ function extendWorkbenchPage(pagePath, marker, lines) {
 const CHILD_KILL_AFTER_SIGTERM_MS = 700;
 
 // Product configuration override. Applied with a shallow Object.assign, so each
-// nested object here replaces the built one whole. One key below, nlsCoreBaseUrl,
+// nested object here replaces the built one whole, except the explicitly merged
+// extension API allowlist below. One key below, nlsCoreBaseUrl,
 // is built from the port, and why it has to be is written beside it; nothing else
 // here depends on it, and the comment used to say that of the whole object.
 const productOverrides = {
@@ -374,7 +375,13 @@ if (!fs.existsSync(rehEntryPoint)) {
     if (fs.existsSync(productJsonPath)) {
         try {
             const product = JSON.parse(fs.readFileSync(productJsonPath, 'utf8'));
-            Object.assign(product, productOverrides);
+            // Preserve grants for bundled extensions such as Copilot.
+            Object.assign(product, productOverrides, {
+                extensionEnabledApiProposals: {
+                    ...product.extensionEnabledApiProposals,
+                    ...productOverrides.extensionEnabledApiProposals
+                }
+            });
             const tmpPath = `${productJsonPath}.${process.pid}.tmp`;
             try {
                 fs.writeFileSync(tmpPath, JSON.stringify(product, null, 2));

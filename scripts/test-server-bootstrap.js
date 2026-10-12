@@ -124,7 +124,7 @@ const PAGE_COLOR_OBJECT = (() => {
     return found[1];
 })();
 
-const UPSTREAM = JSON.stringify({ nameShort: 'Code - OSS', version: '1.133.0', quality: 'oss' }, null, 2);
+const UPSTREAM = JSON.stringify({ nameShort: 'Code - OSS', version: '1.133.0', quality: 'oss', extensionEnabledApiProposals: { 'sample.allowed': ['chatSessionsProvider'] } }, null, 2);
 
 // 1. A valid file is rewritten with the overrides, and nothing is left beside it.
 {
@@ -135,6 +135,8 @@ const UPSTREAM = JSON.stringify({ nameShort: 'Code - OSS', version: '1.133.0', q
     const product = JSON.parse(fs.readFileSync(path.join(dir, 'vscode-reh', 'product.json'), 'utf8'));
     assert.strictEqual(product.nameShort, 'VSCodroid', 'the overrides were not applied');
     assert.strictEqual(product.version, '1.133.0', 'an upstream key was lost');
+    assert.deepStrictEqual(product.extensionEnabledApiProposals['sample.allowed'], ['chatSessionsProvider'], 'an existing extension API grant was lost');
+    assert.deepStrictEqual(product.extensionEnabledApiProposals['openai.chatgpt'], ['chatSessionsProvider', 'languageModelProxy'], 'Codex API proposals were not granted');
     assert.strictEqual(
         product.extensionsGallery.serviceUrl,
         'https://open-vsx.org/vscode/gallery',

@@ -203,6 +203,8 @@ VSCodroid/
 │   │   │   │   ├── libssh.so             # OpenSSH client
 │   │   │   │   ├── libssh-keygen.so      # ssh-keygen
 │   │   │   │   ├── libripgrep.so         # ripgrep (for VS Code Search)
+│   │   │   │   ├── libcodex.so           # Pinned Codex backend
+│   │   │   │   ├── libcodex-modehost.so  # Matching code-mode helper
 │   │   │   │   ├── libldmusl.so          # musl loader (runs the Claude Code CLI)
 │   │   │   │   ├── libclaude-launch.so   # Starts that CLI with the shim preloaded
 │   │   │   │   ├── libseccomp-shim.so    # Answers the syscall Android 13/14 refuse

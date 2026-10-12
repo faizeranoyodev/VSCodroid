@@ -541,8 +541,8 @@ step "Copilot extension (compile-copilot-extension-build)"
 t0=$SECONDS
 npm run gulp compile-copilot-extension-build
 elapsed $(( SECONDS - t0 ))
-[ -d "$SRC/.build/extensions/copilot/node_modules/@github/copilot/sdk" ] || {
-    echo "  ERROR: .build/extensions/copilot has no @github/copilot/sdk" >&2
+[ -f "$SRC/.build/extensions/copilot/node_modules/@github/copilot/sdk/index.js" ] || {
+    echo "  ERROR: .build/extensions/copilot has no @github/copilot/sdk/index.js" >&2
     echo "  Packaging would fail three stages later with a message about the" >&2
     echo "  output tree instead of about this." >&2
     exit 1

@@ -423,6 +423,7 @@ jobs:
           node scripts/test-codex-launch.js
           node scripts/test-image-clipboard.js
           node scripts/test-image-input.js
+          node scripts/test-copilot-packaging.js
           node scripts/test-android-image-picker.js
           node scripts/test-arrow-edge-guard.js
           node scripts/test-modifier-release.js

@@ -310,3 +310,4 @@
 0028 gallery menu|out/vs/code/browser/workbench/workbench.js|Android Gallery Images
 0028 gallery translation|out/nls.messages.js|Image from Gallery...
 0028 Codex attachment dialog|out/vs/workbench/api/node/extensionHostProcess.js|VSCodroid Codex attachments
+0029 Copilot dependency sequencing|-|Built-in SDK index.js and license checked by verify-server-tree.py after packaging

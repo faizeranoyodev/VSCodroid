@@ -1,0 +1,38 @@
+Sequence Copilot dependency packaging after its build postinstall finishes.
+The postinstall removes and recreates the SDK directory; a parallel glob can
+observe the empty intermediate directory and omit its JavaScript entry.
+
+--- a/build/lib/extensions.ts
++++ b/build/lib/extensions.ts
+@@ -476,15 +476,25 @@
+ 			.pipe(rename(p => p.dirname = `extensions/copilot/${p.dirname}`))
+ 	);
+ 
+-	const productionDependencies = getProductionDependencies('extensions/copilot');
+-	const dependenciesSrc = productionDependencies.map(d => path.relative(root, d)).map(d => [`${d}/**`, `!${d}/**/{test,tests}/**`]).flat();
+-
+-	return es.merge(
+-		localExtensionsStream,
++	// The extension build reruns postinstall, which removes and recreates the
++	// SDK directory. Create the dependency glob only after that build completes.
++	const result = es.through();
++	localExtensionsStream.on('error', error => result.emit('error', error));
++	localExtensionsStream.pipe(result, { end: false });
++	localExtensionsStream.on('end', () => {
++		const productionDependencies = getProductionDependencies('extensions/copilot');
++		const dependenciesSrc = productionDependencies.map(d => path.relative(root, d)).map(d => [`${d}/**`, `!${d}/**/{test,tests}/**`]).flat();
++		if (!dependenciesSrc.length) {
++			result.end();
++			return;
++		}
+ 		gulp.src(dependenciesSrc, { base: '.' })
+ 			.pipe(util2.cleanNodeModules(path.join(root, 'build', '.moduleignore')))
+ 			.pipe(util2.cleanNodeModules(path.join(root, 'build', `.moduleignore.${process.platform}`)))
+-	).pipe(util2.setExecutableBit(['**/*.sh']));
++			.on('error', error => result.emit('error', error))
++			.pipe(result);
++	});
++	return result.pipe(util2.setExecutableBit(['**/*.sh']));
+ }
+ 
+ export function packageMarketplaceExtensionsStream(forWeb: boolean): Stream {

@@ -7,6 +7,15 @@ const vm = require('node:vm');
 const { stripTypeScriptTypes } = require('node:module');
 const patch = fs.readFileSync(path.join(__dirname, '../patches/0028-android-image-attachment-picker.patch'), 'utf8');
 const added = patch.split('\n').filter(line => (line.startsWith('+') && !line.startsWith('+++')) || line.startsWith(' ')).map(line => line.slice(1)).join('\n');
+const routeStart = added.indexOf('\t\tconst androidWindow');
+const routeEnd = added.indexOf('\n\t\tif (this.shouldUseSimplified', routeStart);
+const route = stripTypeScriptTypes('(async function(options: IOpenDialogOptions) {' + added.slice(routeStart, routeEnd) + 'return undefined;}).call(service, options)');
+function routes(options, android = true) {
+    return vm.runInNewContext(route, {
+        options, getActiveWindow: () => android ? { __vscodroid: { authToken: 'token' } } : {},
+        service: { pickAndroidImages: (_options, _window, extensions) => Array.from(extensions) },
+    });
+}
 const start = added.indexOf('\tprivate async pickAndroidImages(');
 assert.notEqual(start, -1);
 const end = added.indexOf('\n\t}\n', start) + '\n\t}'.length;
@@ -36,6 +45,11 @@ function fixture(files, { cancel = false, failWrite = false } = {}) {
     return { input, writes, folders, deleted, run: (options, extensions = ['png', 'jpg']) => pick.call(services, options, targetWindow, extensions) };
 }
 (async () => {
+    assert.deepEqual(Array.from(await routes({ title: 'VSCodroid Codex attachments' })), []);
+    assert.deepEqual(Array.from(await routes({ filters: [{ extensions: ['png'] }] })), ['png']);
+    assert.equal(await routes({ title: 'VSCodroid Codex attachments', canSelectFolders: true }), undefined);
+    assert.equal(await routes({ title: 'VSCodroid Codex attachments' }, false), undefined);
+    assert.equal(await routes({}), undefined);
     const image = name => ({ name, size: 4, arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer });
     const f = fixture([image('../same.png'), image('../same.png')]);
     const result = await f.run({ canSelectMany: true });

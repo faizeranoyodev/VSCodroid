@@ -17,14 +17,14 @@ Codex file-only attachment dialogs also use the picker; folders retain filesyste
  	async showOpenDialog(options: IOpenDialogOptions): Promise<URI[] | undefined> {
  		const schema = this.getFileSystemSchema(options);
  
-+		// The remote filesystem picker cannot see Android's gallery. Only image
++		// The remote filesystem picker cannot see Android's gallery. Image and Codex
 +		// attachment dialogs take this route; project/folder dialogs stay intact.
 +		const androidWindow = getActiveWindow() as Window & { __vscodroid?: { authToken?: string } };
 +		const imageExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff']);
 +		const extensions = options.filters?.flatMap(filter => filter.extensions.map(extension => extension.replace(/^\./, '').toLowerCase())) ?? [];
 +		if (androidWindow.__vscodroid?.authToken && options.canSelectFiles !== false && !options.canSelectFolders &&
 +			(options.title === 'VSCodroid Codex attachments' || extensions.some(extension => imageExtensions.has(extension)))) {
-+			return this.pickAndroidImages(options, androidWindow, extensions.filter(extension => /^[a-z0-9]+$/.test(extension))));
++			return this.pickAndroidImages(options, androidWindow, extensions.filter(extension => /^[a-z0-9]+$/.test(extension)));
 +		}
 +
  		if (this.shouldUseSimplified(schema)) {

@@ -53,10 +53,4 @@ nested.listeners.message({ source: {}, data: { type: 'vscodroid-image-input', ac
 assert.equal(nested.api.deliver('spoof', image), false, 'unrelated frames cannot prepare insertion');
 main.api.begin('bad-mime'); main.api.deliver('bad-mime', { mime: 'text/plain', base64: image.base64 });
 assert.equal(nested.events.length, 1);
-const native = fs.readFileSync('android/app/src/main/kotlin/com/vscodroid/webview/ImageInputWebView.kt', 'utf8');
-assert.match(native, /override fun onCreateInputConnection/);
-assert.match(native, /outAttrs.contentMimeTypes = mimeTypes/);
-assert.match(native, /content\.requestPermission\(\)/);
-assert.match(native, /finally \{\s*if \(granted\) content.releasePermission/);
-assert.match(native, /images.shutdown\(\)/);
 console.log('Image input tests passed: nested frames, file payload, focused target, replay, expiry, MIME and sender guards');

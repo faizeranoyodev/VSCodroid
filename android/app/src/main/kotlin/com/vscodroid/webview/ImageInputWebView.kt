@@ -1,7 +1,6 @@
 package com.vscodroid.webview
 
 import android.content.Context
-import android.net.Uri
 import android.os.Bundle
 import android.util.AttributeSet
 import android.view.inputmethod.EditorInfo
@@ -9,6 +8,7 @@ import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputConnectionWrapper
 import android.view.inputmethod.InputContentInfo
 import android.webkit.WebView
+import androidx.core.net.toUri
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.vscodroid.bridge.ClipboardBridge
@@ -31,7 +31,7 @@ class ImageInputWebView @JvmOverloads constructor(
     private val imageScriptAvailable = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
 
     init {
-        if (imageScriptAvailable) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(
                 this, context.assets.open("image-input.js").bufferedReader().use { it.readText() }, setOf("*"),
             )
@@ -46,7 +46,7 @@ class ImageInputWebView @JvmOverloads constructor(
         return object : InputConnectionWrapper(original, false) {
             override fun commitContent(content: InputContentInfo, flags: Int, opts: Bundle?): Boolean {
                 val supported = mimeTypes.any { content.description.hasMimeType(it) }
-                val host = Uri.parse(url ?: "").host
+                val host = (url ?: "").toUri().host
                 if (closed || !supported || content.contentUri.scheme != "content" ||
                     host !in setOf("127.0.0.1", "localhost", "::1")) return false
                 val granted = flags and InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION != 0

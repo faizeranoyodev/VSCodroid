@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the exact open-source backend matching Codex IDE 26.908.40401.
+"""Install the stable open-source backend tested with Codex IDE 26.908.40401.
 
 Only official release payloads, pinned by archive AND extracted binary digest.
 No IDE extension is redistributed. The helper basename patch is equal-length,
@@ -13,13 +13,13 @@ import tarfile
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TAG = 'rust-v0.154.0-alpha.6.2'
-COMMIT = 'b5bffd3ec4db487e7e3dec59663875b0ef7b72ca'
+TAG = 'rust-v0.162.1'
+COMMIT = '092d3acd6bec3e3a14bdc7e7a2810ab628ab759d'
 PAYLOADS = [
-    ('codex', 'libcodex.so', '65cc130ab7bc42533c315981496342f455f9fc04e73f8537be8ed06b5a198761',
-     '249471afa90ed13ee387038bf5daad182a22178bdc1b7f6dbee25812774ff7dc'),
-    ('codex-code-mode-host', 'libcodex-modehost.so', 'f5ee23396172294124e15984c68a9e04c1d722c7027a2b2a4866ef4e6c31a817',
-     'dfd7ef128561b7dcc3f12462f1acdf811ba2c2bf5d95fa78c6306fd4cf93db68'),
+    ('codex', 'libcodex.so', 'bf3ca2719f1143b1440fbd85c149379e696c782c50ad7991f8bfcec60b2600c1',
+     '071cbe8d821cf1b02b6d8ba6c8b7991b228fcb8519dcb68a37d31222bb8cabe5'),
+    ('codex-code-mode-host', 'libcodex-modehost.so', '1395ce9367f8acd280674dff083edf25bf221d908b8351d5bd4f3fdde9181e9a',
+     'f6477b0357a8cc2291d628962876ecb1a2beb872f71a1e2734363c81ff21700d'),
 ]
 
 def download(url):
@@ -33,12 +33,12 @@ def checked(data, digest):
 
 def patch_backend(data):
     old, new = b'codex-code-mode-host', b'libcodex-modehost.so'
-    if len(old) != len(new) or data.count(old) != 2:
+    if len(old) != len(new) or data.count(old) != 3:
         raise RuntimeError('Unexpected Codex helper basename layout')
     return data.replace(old, new)
 
 def main():
-    cache = ROOT / 'downloads' / 'codex'
+    cache = ROOT / 'downloads' / 'codex' / TAG
     target = ROOT / 'android/app/src/main/jniLibs/arm64-v8a'
     cache.mkdir(parents=True, exist_ok=True)
     target.mkdir(parents=True, exist_ok=True)
@@ -65,7 +65,7 @@ def main():
     for name in ['LICENSE', 'NOTICE']:
         (docs / name).write_bytes(download(f'https://raw.githubusercontent.com/openai/codex/{COMMIT}/{name}'))
     (docs / 'VSCODROID_MODIFICATIONS.txt').write_text(
-        'Codex 0.154.0-alpha.6.2: helper filename changed from codex-code-mode-host '
+        'Codex 0.162.1: helper filename changed from codex-code-mode-host '
         'to libcodex-modehost.so for Android packaging. No API, authentication, '
         'approval policy or sandbox configuration is modified.\n')
 

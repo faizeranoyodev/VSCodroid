@@ -1,8 +1,8 @@
 'use strict';
 
 // Android refuses execve of the extension's app-data ELF. The APK packages the
-// matching open-source backend in nativeLibraryDir, which Android can execute.
-// Pin the redirect to one extension version: never mix protocols silently after
+// tested open-source backend in nativeLibraryDir, which Android can execute.
+// Pin the redirect to one extension version: never redirect silently after
 // an extension update, and never rewrite unrelated programs or custom CLI paths.
 const cp = require('node:child_process');
 const path = require('node:path');
@@ -21,7 +21,7 @@ if (home && nativeDir && path.isAbsolute(nativeDir)) {
         if (typeof file !== 'string' || !sources.has(file)) return file;
         fs.accessSync(target, fs.constants.X_OK);
         fs.accessSync(host, fs.constants.X_OK);
-        console.info('[VSCodroid Codex] Launching packaged backend 0.154.0-alpha.6.2');
+        console.info('[VSCodroid Codex] Launching packaged backend 0.162.1');
         return target;
     }
     for (const name of ['spawn', 'spawnSync']) {

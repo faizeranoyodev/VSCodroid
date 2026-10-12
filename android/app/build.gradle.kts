@@ -275,7 +275,13 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            applicationIdSuffix = ".debug"
+            // CI test builds use a separate package because hosted runners generate
+            // fresh debug signing keys; never require uninstalling the previous app.
+            applicationIdSuffix = if (providers.gradleProperty("codexTestBuild").orNull == "true") {
+                ".codextest"
+            } else {
+                ".debug"
+            }
             versionNameSuffix = "-debug"
             // Which of the 2000-odd unit tests actually reach a line, answered by
             // the tooling already in the Android plugin rather than by adding a

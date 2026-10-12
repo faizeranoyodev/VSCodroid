@@ -21,9 +21,10 @@ The server grants `chatSessionsProvider` and `languageModelProxy` to
 `openai.chatgpt` through its product configuration, matching this version's
 manifest. No global proposed-API permission is granted.
 
-Install the APK over the previous debug test app, then force-stop VSCodroid and
-reopen it so the server and extension host load the new preload. Open Codex and
-sign in. The terminal command from the earlier diagnostic now redirects to the
+The downloadable APK uses a separate package, `com.vscodroid.codextest`,
+because hosted CI debug signing keys can differ between runs. It preserves your
+previous app and its data. Force-stop the previous VSCodroid app, install and
+open this test app, then install Codex 26.908.40401 and sign in. The terminal command from the earlier diagnostic now redirects to the
 packaged backend; its `--version` should print `0.154.0-alpha.6.2`.
 
 This is a startup compatibility change, not proof that every Linux tool works on

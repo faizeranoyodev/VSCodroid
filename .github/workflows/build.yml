@@ -12,7 +12,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.ref }}-${{ github.event.workflow_run.id || 'source' }}
   cancel-in-progress: true
 
 # Read by default. Neither job here publishes anything: the only step that

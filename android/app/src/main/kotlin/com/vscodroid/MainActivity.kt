@@ -3190,15 +3190,14 @@ class MainActivity : AppCompatActivity() {
         )
         wv.webChromeClient = VSCodroidWebChromeClient(
             navigationIsOurs = ::navigationIsOurs,
-        ) { allowMultiple ->
-            // "*/*" rather than the input's accept types: the Upload command's
-            // input declares none, and a filter derived from one could only ever
-            // narrow what the user is allowed to import.
+        ) { allowMultiple, mimeTypes ->
+            // Image inputs reach Android's image providers; unfiltered Explorer
+            // uploads still use */*.
             try {
                 if (allowMultiple) {
-                    multiFileChooserLauncher.launch(arrayOf("*/*"))
+                    multiFileChooserLauncher.launch(mimeTypes)
                 } else {
-                    fileChooserLauncher.launch(arrayOf("*/*"))
+                    fileChooserLauncher.launch(mimeTypes)
                 }
                 true
             } catch (e: ActivityNotFoundException) {
@@ -3462,6 +3461,9 @@ class MainActivity : AppCompatActivity() {
         injectWindowOpenOverride()
         // Answers a paste out of Android's clipboard, which the WebView will not
         injectClipboardReadFallback()
+        webView?.evaluateJavascript(
+            assets.open("image-clipboard.js").bufferedReader().use { it.readText() }, null
+        )
         // Keeps a downloaded blob readable long enough to be saved, and names it
         injectDownloadCapture()
         // Open in Browser, SSH keys and About are contributed by the bundled bridge
@@ -5701,7 +5703,10 @@ class MainActivity : AppCompatActivity() {
                     if (!token || !d || !d.cmd) return;
                     try {
                         var result;
-                        if (d.cmd === 'openFolderPicker') {
+                        if (d.cmd === 'readClipboardImage') {
+                            result = AndroidBridge.readClipboardImage(token, d.id);
+                            if (result !== '') ch.postMessage({id: d.id, ok: false, error: result});
+                        } else if (d.cmd === 'openFolderPicker') {
                             AndroidBridge.openFolderPicker(token);
                             ch.postMessage({id: d.id, ok: true});
                         } else if (d.cmd === 'getRecentFolders') {

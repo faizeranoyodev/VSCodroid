@@ -13,7 +13,7 @@ import com.vscodroid.util.Logger
  */
 class VSCodroidWebChromeClient(
     private val navigationIsOurs: () -> Boolean,
-    private val openFileChooser: (allowMultiple: Boolean) -> Boolean,
+    private val openFileChooser: (allowMultiple: Boolean, mimeTypes: Array<String>) -> Boolean,
 ) : WebChromeClient() {
 
     private val tag = "WebChromeClient"
@@ -138,7 +138,8 @@ class VSCodroidWebChromeClient(
         // the likeliest way to reach one is a result that never came back.
         answerFileChooser(emptyArray())
         pendingFileChooser = filePathCallback
-        if (!openFileChooser(fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE)) {
+        if (!openFileChooser(fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE,
+                chooserMimeTypes(fileChooserParams.acceptTypes))) {
             Logger.w(tag, "No file picker started; answering the page with nothing")
             answerFileChooser(emptyArray())
         }
@@ -159,4 +160,16 @@ class VSCodroidWebChromeClient(
         pendingFileChooser = null
         callback.onReceiveValue(uris)
     }
+}
+
+/** HTML accept may contain extensions, MIME types or comma-separated lists. */
+internal fun chooserMimeTypes(acceptTypes: Array<String>?): Array<String> {
+    val imageExtensions = mapOf(".png" to "image/png", ".jpg" to "image/jpeg",
+        ".jpeg" to "image/jpeg", ".gif" to "image/gif", ".webp" to "image/webp",
+        ".bmp" to "image/bmp", ".tif" to "image/tiff", ".tiff" to "image/tiff")
+    val types = acceptTypes.orEmpty().flatMap { it.split(',') }.map { it.trim().lowercase() }
+        .filter { it.isNotEmpty() }.map { imageExtensions[it] ?: it }
+    // An unknown extension must not silently hide files from an existing upload input.
+    return if (types.isEmpty() || types.any { '/' !in it }) arrayOf("*/*")
+        else types.distinct().toTypedArray()
 }

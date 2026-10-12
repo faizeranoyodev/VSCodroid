@@ -305,3 +305,6 @@
 # it, and the patch header says so too. Against the shipped 1.139.1
 # workbench.js `initialWorkspaceSettings` occurs 0 times.
 0027 workspace settings from the page|out/vs/code/browser/workbench/workbench.js|options?.initialWorkspaceSettings
+
+0028 Android image picker|out/vs/code/browser/workbench/workbench.js|Android image attachments must be 20 MB or smaller
+0028 gallery menu|out/vs/code/browser/workbench/workbench.js|Image from Gallery...

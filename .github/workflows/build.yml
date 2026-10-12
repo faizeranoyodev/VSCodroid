@@ -1,6 +1,11 @@
 name: Build
 
 on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Build Code - OSS server]
+    types: [completed]
+    branches: [main]
   pull_request:
     branches: [main]
   push:
@@ -20,10 +25,14 @@ permissions:
 
 jobs:
   build:
+    # A push rebuilds the server first. Package only after its release exists.
+    if: github.event_name != 'push' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     name: Build Debug APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
+      # Fetch the server rebuilt with this fork's image attachment patch.
+      REPO: ${{ github.repository }}
       # In the assets- cache key below, because the addons, the glibc shim and
       # the trampoline in that cache are compiled with it and their steps are
       # skipped on a hit. release.yml pins the same version on its own.
@@ -383,6 +392,7 @@ jobs:
           retention-days: 14
 
   test:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     name: Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -3,7 +3,12 @@ package com.vscodroid.bridge
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import com.vscodroid.util.Logger
+import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.util.Base64
 
 class ClipboardBridge(private val context: Context) {
     private val tag = "ClipboardBridge"
@@ -91,6 +96,22 @@ class ClipboardBridge(private val context: Context) {
         }
     }
 
+    /** Snapshot only an image explicitly placed on the device clipboard. */
+    fun imageUri(): Uri? {
+        val clip = clipboardManager.primaryClip ?: return null
+        if (clip.itemCount == 0 || !clip.description.hasMimeType("image/*")) return null
+        return clip.getItemAt(0).uri?.takeIf { it.scheme == "content" }
+    }
+
+    /** Called on a worker: never coerce a document to text or read an unbounded file. */
+    fun readImage(uri: Uri): String {
+        val bytes = context.contentResolver.openInputStream(uri)?.use(::readClipboardImageBytes)
+            ?: error("The clipboard image could not be opened")
+        val mime = clipboardImageMime(bytes) ?: error("Unsupported clipboard image format")
+        return JSONObject().put("mime", mime)
+            .put("base64", Base64.getEncoder().encodeToString(bytes)).toString()
+    }
+
     /**
      * Whether [item] can be coerced to text without opening a provider.
      *
@@ -101,4 +122,35 @@ class ClipboardBridge(private val context: Context) {
      */
     private fun offersTextWithoutReading(clip: ClipData, item: ClipData.Item): Boolean =
         clip.description?.hasMimeType("text/*") == true && item.uri == null
+}
+
+internal const val MAX_CLIPBOARD_IMAGE_BYTES = 20 * 1024 * 1024
+
+internal fun readClipboardImageBytes(input: InputStream): ByteArray {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        require(output.size() + count <= MAX_CLIPBOARD_IMAGE_BYTES) {
+            "Clipboard images must be 20 MB or smaller"
+        }
+        output.write(buffer, 0, count)
+    }
+    return output.toByteArray()
+}
+
+internal fun clipboardImageMime(bytes: ByteArray): String? {
+    fun starts(vararg signature: Int) = bytes.size >= signature.size &&
+        signature.indices.all { (bytes[it].toInt() and 255) == signature[it] }
+    return when {
+        starts(137, 80, 78, 71, 13, 10, 26, 10) -> "image/png"
+        starts(255, 216, 255) -> "image/jpeg"
+        starts(71, 73, 70, 56, 55, 97) || starts(71, 73, 70, 56, 57, 97) -> "image/gif"
+        starts(66, 77) -> "image/bmp"
+        starts(73, 73, 42, 0) || starts(77, 77, 0, 42) -> "image/tiff"
+        starts(82, 73, 70, 70) && bytes.size >= 12 &&
+            bytes.copyOfRange(8, 12).contentEquals(byteArrayOf(87, 69, 66, 80)) -> "image/webp"
+        else -> null
+    }
 }

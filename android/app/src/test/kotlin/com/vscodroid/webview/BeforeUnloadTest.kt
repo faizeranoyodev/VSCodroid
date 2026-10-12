@@ -44,7 +44,7 @@ class BeforeUnloadTest {
     @AfterEach
     fun tearDown() = unmockkAll()
 
-    private fun client(ours: Boolean) = VSCodroidWebChromeClient({ ours }) { true }
+    private fun client(ours: Boolean) = VSCodroidWebChromeClient({ ours }) { _, _ -> true }
 
     @Test
     fun `a navigation this app started is let through`() {

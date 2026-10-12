@@ -1,0 +1,158 @@
+Route image attachment dialogs through Android, and copy selected bytes to the remote provider.
+Add a gallery entry to the chat attachment menu and WebP clipboard support.
+Other file and folder dialogs retain their existing filesystem selection.
+
+--- a/src/vs/workbench/services/dialogs/browser/fileDialogService.ts
++++ b/src/vs/workbench/services/dialogs/browser/fileDialogService.ts
+@@ -12,7 +12,7 @@
+ import { HTMLFileSystemProvider } from '../../../../platform/files/browser/htmlFileSystemProvider.js';
+ import { localize } from '../../../../nls.js';
+ import { getMediaOrTextMime } from '../../../../base/common/mime.js';
+-import { basename } from '../../../../base/common/resources.js';
++import { basename, joinPath } from '../../../../base/common/resources.js';
+ import { getActiveWindow, triggerDownload, triggerUpload } from '../../../../base/browser/dom.js';
+ import Severity from '../../../../base/common/severity.js';
+ import { VSBuffer } from '../../../../base/common/buffer.js';
+@@ -185,6 +185,16 @@
+ 	async showOpenDialog(options: IOpenDialogOptions): Promise<URI[] | undefined> {
+ 		const schema = this.getFileSystemSchema(options);
+ 
++		// The remote filesystem picker cannot see Android's gallery. Only image
++		// attachment dialogs take this route; project/folder dialogs stay intact.
++		const androidWindow = getActiveWindow() as Window & { __vscodroid?: { authToken?: string } };
++		const imageExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff']);
++		const extensions = options.filters?.flatMap(filter => filter.extensions.map(extension => extension.replace(/^\./, '').toLowerCase())) ?? [];
++		if (androidWindow.__vscodroid?.authToken && options.canSelectFiles !== false && !options.canSelectFolders &&
++			extensions.some(extension => imageExtensions.has(extension))) {
++			return this.pickAndroidImages(options, androidWindow, extensions.filter(extension => imageExtensions.has(extension)));
++		}
++
+ 		if (this.shouldUseSimplified(schema)) {
+ 			return super.showOpenDialogSimplified(schema, options);
+ 		}
+@@ -212,6 +222,48 @@
+ 		}
+ 
+ 		return uri ? [uri] : undefined;
++	}
++
++	private async pickAndroidImages(options: IOpenDialogOptions, targetWindow: Window, extensions: string[]): Promise<URI[] | undefined> {
++		const files = await new Promise<File[]>((resolve) => {
++			const input = targetWindow.document.createElement('input');
++			input.type = 'file';
++			input.accept = extensions.map(extension => `.${extension}`).join(',');
++			input.multiple = !!options.canSelectMany;
++			input.hidden = true;
++			const finish = () => {
++				resolve(Array.from(input.files ?? []));
++				input.remove();
++			};
++			input.addEventListener('change', finish, { once: true });
++			input.addEventListener('cancel', finish, { once: true });
++			targetWindow.document.body.appendChild(input);
++			input.click();
++		});
++		if (!files.length) {
++			return undefined;
++		}
++		if (files.some(file => file.size > 20 * 1024 * 1024)) {
++			throw new Error('Android image attachments must be 20 MB or smaller');
++		}
++		// Store through the remote provider so extensions can read the returned
++		// URIs. A content:// URI or browser-only blob cannot be read by Node.
++		const directory = joinPath(await this.preferredHome(Schemas.vscodeRemote), '.vscodroid', 'attachments', targetWindow.crypto.randomUUID());
++		await this.fileService.createFolder(directory);
++		try {
++			const result: URI[] = [];
++			for (let index = 0; index < files.length; index++) {
++				const file = files[index];
++				const name = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'image.png';
++				const uri = joinPath(directory, `${index}-${name}`);
++				await this.fileService.writeFile(uri, VSBuffer.wrap(new Uint8Array(await file.arrayBuffer())));
++				result.push(uri);
++			}
++			return result;
++		} catch (error) {
++			await this.fileService.del(directory, { recursive: true }).catch(() => undefined);
++			throw error;
++		}
+ 	}
+ 
+ 	private async getFilePickerStartIn(defaultUri: URI | undefined): Promise<FileSystemDirectoryHandle | undefined> {
+--- a/src/vs/workbench/contrib/chat/browser/actions/chatContextActions.ts
++++ b/src/vs/workbench/contrib/chat/browser/actions/chatContextActions.ts
+@@ -23,6 +23,8 @@
+ import { Action2, MenuId, registerAction2 } from '../../../../../platform/actions/common/actions.js';
+ import { ICommandService } from '../../../../../platform/commands/common/commands.js';
+ import { ContextKeyExpr, IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
++import { getActiveWindow } from '../../../../../base/browser/dom.js';
++import { IFileDialogService } from '../../../../../platform/dialogs/common/dialogs.js';
+ import { IFileService } from '../../../../../platform/files/common/files.js';
+ import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
+ import { IKeybindingService } from '../../../../../platform/keybinding/common/keybinding.js';
+@@ -541,7 +543,35 @@
+ 			return;
+ 		}
+ 
++		const fileDialogService = accessor.get(IFileDialogService);
++		const fileService = accessor.get(IFileService);
+ 		const quickPickItems: IContextPickItemItem[] = [];
++
++		const androidWindow = getActiveWindow() as Window & { __vscodroid?: { authToken?: string } };
++		if (androidWindow.__vscodroid?.authToken) {
++			const label = localize('chat.attach.androidGallery', "Image from Gallery...");
++			quickPickItems.push({
++				kind: 'contextPick', label, iconClass: ThemeIcon.asClassName(Codicon.fileMedia),
++				item: {
++					type: 'valuePick', label, icon: Codicon.fileMedia,
++					asAttachment: async () => {
++						const uris = await fileDialogService.showOpenDialog({
++							canSelectFiles: true, canSelectFolders: false, canSelectMany: true,
++							filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff'] }]
++						});
++						if (!uris) { return undefined; }
++						return Promise.all(uris.map(async uri => {
++							const file = await fileService.readFile(uri);
++							return {
++								id: uri.toString(), name: uri.path.split('/').pop() ?? 'image',
++								kind: 'image' as const, value: await resizeImage(file.value.buffer),
++								references: [{ reference: uri, kind: 'reference' as const }]
++							};
++						}));
++					}
++				}
++			});
++		}
+ 
+ 		for (const item of contextPickService.items) {
+ 
+@@ -626,7 +656,7 @@
+ 				toAttach.push(entry);
+ 			}
+ 		} else if (isIQuickPickItemWithResource(pick) && pick.resource) {
+-			if (/\.(png|jpg|jpeg|bmp|gif|tiff)$/i.test(pick.resource.path)) {
++			if (/\.(png|jpg|jpeg|bmp|gif|webp|tiff)$/i.test(pick.resource.path)) {
+ 				// checks if the file is an image
+ 				if (URI.isUri(pick.resource)) {
+ 					// read the image and attach a new file context.
+--- a/src/vs/platform/clipboard/browser/clipboardService.ts
++++ b/src/vs/platform/clipboard/browser/clipboardService.ts
+@@ -55,7 +55,7 @@
+ 			const clipboardItems = await navigator.clipboard.read();
+ 			const clipboardItem = clipboardItems[0];
+ 
+-			const supportedImageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/tiff', 'image/bmp'];
++			const supportedImageTypes = ['image/webp', 'image/png', 'image/jpeg', 'image/gif', 'image/tiff', 'image/bmp'];
+ 			const mimeType = supportedImageTypes.find(type => clipboardItem.types.includes(type));
+ 
+ 			if (mimeType) {
+--- a/src/vs/workbench/contrib/chat/browser/widget/input/editor/chatPasteProviders.ts
++++ b/src/vs/workbench/contrib/chat/browser/widget/input/editor/chatPasteProviders.ts
+@@ -81,6 +81,7 @@
+ 		}
+ 
+ 		const supportedMimeTypes = [
++			'image/webp',
+ 			'image/png',
+ 			'image/jpeg',
+ 			'image/jpg',

@@ -5,6 +5,13 @@ name: Build Code - OSS server
 # twelve minutes. The tarball it publishes is what build.yml and release.yml then fetch,
 # so the expensive build happens when the version moves, not on every tag.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'patches/**'
+      - 'VSCODE_VERSION'
+      - 'VSCODE_COMMIT'
+      - '.github/workflows/build-vscode-oss.yml'
   workflow_dispatch:
     inputs:
       vscode_version:
@@ -36,7 +43,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner || 'ubuntu-24.04-arm' }}
     timeout-minutes: 120
     outputs:
       version: ${{ steps.pin.outputs.version }}
@@ -161,6 +168,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: github.event_name == 'push'
     name: Publish the server tarball
     runs-on: ubuntu-latest
     needs: build

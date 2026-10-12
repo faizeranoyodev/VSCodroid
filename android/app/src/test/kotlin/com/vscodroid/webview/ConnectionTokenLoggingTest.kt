@@ -373,7 +373,7 @@ class ConnectionTokenLoggingTest {
      */
     @Test
     fun `a console message carrying the token is not logged with it`() {
-        val client = VSCodroidWebChromeClient(navigationIsOurs = { false }) { _ -> false }
+        val client = VSCodroidWebChromeClient(navigationIsOurs = { false }) { _, _ -> false }
 
         listOf(
             ConsoleMessage.MessageLevel.ERROR,

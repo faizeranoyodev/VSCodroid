@@ -638,6 +638,18 @@ class AndroidBridge(
         return clipboard.hasClipboardText()
     }
 
+    /** Returns a dispatch refusal, or posts a JSON image (or null) asynchronously. */
+    @JavascriptInterface
+    fun readClipboardImage(authToken: String, replyId: String): String {
+        if (!security.validateToken(authToken)) return "Invalid session token"
+        val uri = try { clipboard.imageUri() } catch (e: Exception) {
+            return "The device clipboard could not be read"
+        }
+        return if (answerLater(replyId) {
+            true to (uri?.let { clipboard.readImage(it) } ?: "null")
+        }) "" else "Too many pending clipboard or storage requests"
+    }
+
     /**
      * Opens a URL outside the editor. Any URL. Says whether it did.
      *

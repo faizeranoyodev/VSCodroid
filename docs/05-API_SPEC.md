@@ -292,6 +292,12 @@ fun readFromClipboard(authToken: String): String?
 @JavascriptInterface
 fun hasClipboardText(authToken: String): Boolean
 // Checks if clipboard has text content
+
+@JavascriptInterface
+fun readClipboardImage(authToken: String, replyId: String): String
+// Returns an immediate refusal, or "" when dispatched. The async reply contains
+// JSON null or {mime, base64}. Only image content URIs explicitly copied to the
+// clipboard are read, on a worker, with a 20 MiB limit and format signature check.
 ```
 
 #### Navigation

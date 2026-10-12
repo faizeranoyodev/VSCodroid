@@ -1,0 +1,142 @@
+name: Publish Codex startup test
+on:
+  push:
+    branches: [codex-downloads]
+    paths: ['.github/workflows/codex-download-release.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      apk_sha: ${{ steps.verify.outputs.apk_sha }}
+    steps:
+      - name: Retrieve successful build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/38263252528 --jq .head_sha)" = '59ba1ec4aa9a3f894c38d05bbbd4f941fddc2305'
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/38263252528 --jq .conclusion)" = 'success'
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/38263252606 --jq .conclusion)" = 'success'
+          gh run download 38263252528 --repo "$GITHUB_REPOSITORY" --name debug-apk --dir downloaded
+      - name: Verify exact payloads and backend protocol
+        id: verify
+        run: |
+          python3 - <<'PY'
+          import zipfile, pathlib, hashlib, subprocess, json, selectors, time, os, tempfile
+          apk = pathlib.Path('downloaded/app-debug.apk')
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          expected = {
+              'libcodex.so': '6290f0b7e6646bf4ff8837d853d9dc16b914d6a12fe2bf114a40f442b65caf6f',
+              'libcodex-modehost.so': 'dfd7ef128561b7dcc3f12462f1acdf811ba2c2bf5d95fa78c6306fd4cf93db68'
+          }
+          runtime = pathlib.Path('runtime').resolve()
+          runtime.mkdir()
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None, 'APK ZIP integrity failed'
+              assert b'26.908.40401' in z.read('assets/codex-launch.js')
+              assert b"'--enable-proposed-api', 'openai.chatgpt'" in z.read('assets/server.js')
+              assert b'VSCODROID_NATIVE_LIB_DIR' in z.read('classes.dex') or any(b'VSCODROID_NATIVE_LIB_DIR' in z.read(n) for n in z.namelist() if n.endswith('.dex'))
+              for name, sha in expected.items():
+                  data = z.read('lib/arm64-v8a/' + name)
+                  assert hashlib.sha256(data).hexdigest() == sha, name + ' digest mismatch'
+                  dest = runtime / name
+                  dest.write_bytes(data)
+                  dest.chmod(0o755)
+          binary = str(runtime / 'libcodex.so')
+          version = subprocess.check_output([binary, '--version'], text=True, timeout=20)
+          assert '0.154.0-alpha.6.2' in version, version
+          print('Backend version:', version.strip())
+          with tempfile.TemporaryDirectory() as home:
+              env = dict(os.environ, HOME=home, CODEX_HOME=home + '/.codex')
+              proc = subprocess.Popen([binary, '-c', 'features.code_mode_host=true', 'app-server'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env, bufsize=0)
+              selector = selectors.DefaultSelector()
+              selector.register(proc.stdout, selectors.EVENT_READ)
+              try:
+                  for request in [
+                      {'id': 1, 'method': 'initialize', 'params': {'clientInfo': {'name': 'vscodroid_smoke', 'version': '1.0'}, 'capabilities': {'experimentalApi': True}}},
+                      {'id': 2, 'method': 'config/read', 'params': {'includeLayers': False}}
+                  ]:
+                      proc.stdin.write((json.dumps(request) + '\n').encode())
+                      proc.stdin.flush()
+                      deadline = time.monotonic() + 30
+                      while True:
+                          assert selector.select(max(0, deadline-time.monotonic())), 'Backend response timeout'
+                          line = proc.stdout.readline()
+                          assert line, 'Backend exited unexpectedly'
+                          reply = json.loads(line)
+                          if reply.get('id') == request['id']:
+                              assert 'result' in reply and 'error' not in reply, reply
+                              print('PASS:', request['method'])
+                              break
+                          assert time.monotonic() < deadline, 'Backend response timeout'
+                      if request['id'] == 1:
+                          proc.stdin.write(b'{"method":"initialized"}\n')
+                          proc.stdin.flush()
+              finally:
+                  proc.kill()
+                  proc.wait(timeout=10)
+                  selector.close()
+          print('APK SHA256:', digest)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('apk_sha=' + digest + '\n')
+          PY
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      APK_SHA: ${{ needs.verify.outputs.apk_sha }}
+      RELEASE_TAG: codex-startup-test
+    steps:
+      - name: Retrieve exact verified APK
+        run: |
+          gh run download 38263252528 --repo "$GITHUB_REPOSITORY" --name debug-apk --dir downloaded
+          cp downloaded/app-debug.apk VSCodroid-codex-fix.apk
+          echo "$APK_SHA  VSCodroid-codex-fix.apk" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Verify Android signature
+        run: |
+          curl --fail --location --output apksig.jar https://dl.google.com/android/maven2/com/android/tools/build/apksig/9.3.1/apksig-9.3.1.jar
+          echo '562cd0a88890960d2ece48e116c61f12872222f1dcc306890799382bc019b201  apksig.jar' | sha256sum --check
+          cat > VerifyApk.java <<'JAVA'
+          import com.android.apksig.ApkVerifier;
+          import java.io.File;
+          class VerifyApk {
+              public static void main(String[] args) throws Exception {
+                  var r = new ApkVerifier.Builder(new File(args[0])).build().verify();
+                  if (!r.isVerified()) throw new IllegalStateException(r.getErrors().toString());
+                  System.out.println("PASS: Android APK signature; v2=" + r.isVerifiedUsingV2Scheme());
+              }
+          }
+          JAVA
+          java --source 17 --class-path apksig.jar VerifyApk.java VSCodroid-codex-fix.apk
+      - name: Publish the tested download
+        run: |
+          cat > NOTES.md <<'NOTES'
+          Unofficial VSCodroid Codex startup test, retaining the image attachment fix.
+
+          1. Force-stop the previous VSCodroid app, then install and open this APK. It installs separately as `com.vscodroid.codextest`; the previous app and its data remain available.
+          2. Install Codex extension **26.908.40401**, disable its automatic updates, then open Codex and sign in.
+          3. Test one message, a file edit, and terminal tools. If it still fails, send the Codex Output log.
+
+          Fixes the observed EACCES startup path by packaging the matching backend and code-mode helper in Android's executable native-library directory. Also grants the extension its required proposed API access in the browser workbench.
+
+          Checks passed: build, unit tests, lint, exact native payload digests, APK ZIP integrity, Android APK signature, and ARM64 Linux backend initialize/config-read protocol smoke test. Actual Android device startup and login are still to be tested. Approval and sandbox settings are unchanged; Android may impose additional restrictions on Linux tools.
+
+          Source: https://github.com/faizeranoyodev/VSCodroid/tree/59ba1ec4aa9a3f894c38d05bbbd4f941fddc2305
+          Original project: https://github.com/rmyndharis/VSCodroid
+          NOTES
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" VSCodroid-codex-fix.apk SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" VSCodroid-codex-fix.apk SHA256SUMS --repo "$GITHUB_REPOSITORY" --target 59ba1ec4aa9a3f894c38d05bbbd4f941fddc2305 --title 'VSCodroid Codex startup test APK' --notes-file NOTES.md --prerelease
+          fi

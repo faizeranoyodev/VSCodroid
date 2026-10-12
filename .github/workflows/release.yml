@@ -420,6 +420,7 @@ jobs:
           node scripts/test-ui-scale.js
           node scripts/test-plain-text-page.js
           node scripts/test-download-capture.js
+          node scripts/test-codex-launch.js
           node scripts/test-image-clipboard.js
           node scripts/test-android-image-picker.js
           node scripts/test-arrow-edge-guard.js
@@ -572,6 +573,9 @@ jobs:
       #
       # This run covers the base APK only. The toolchain packs do not exist yet
       # they are downloaded further down, so it runs again after them.
+      - name: Install pinned Codex backend
+        run: python3 scripts/download-codex-backend.py
+
       - name: Check every shipped library is attributed
         run: python3 scripts/check-library-attribution.py
 

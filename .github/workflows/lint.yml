@@ -302,6 +302,7 @@ jobs:
           node scripts/test-ui-scale.js
           node scripts/test-plain-text-page.js
           node scripts/test-download-capture.js
+          node scripts/test-codex-launch.js
           node scripts/test-image-clipboard.js
           node scripts/test-android-image-picker.js
           node scripts/test-arrow-edge-guard.js

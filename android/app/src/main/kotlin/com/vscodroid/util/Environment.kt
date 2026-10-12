@@ -130,6 +130,7 @@ object Environment {
             // mksh running a make recipe, or a "type": "process" task. See
             // [getExecTablePath] for why it is exported rather than compiled in.
             "VSCODROID_EXEC_TABLE" to getExecTablePath(context),
+            "VSCODROID_NATIVE_LIB_DIR" to nativeLibDir,
             "TERM" to term,
             "TERMINFO" to "$filesDir/usr/share/terminfo",
             "LANG" to "en_US.UTF-8",

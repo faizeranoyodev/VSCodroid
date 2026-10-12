@@ -210,3 +210,13 @@ The `libc++_shared.so` C++ standard library is distributed under the Apache 2.0 
 ---
 
 This file is provided for attribution purposes. For exact license texts, refer to the `LICENSE` files in each software's source repository. If you believe any attribution is missing or incorrect, please open an issue at https://github.com/rmyndharis/VSCodroid/issues.
+
+## Codex
+
+OpenAI Codex 0.154.0-alpha.6.2 (Apache-2.0), source commit
+`b5bffd3ec4db487e7e3dec59663875b0ef7b72ca`, https://github.com/openai/codex.
+`libcodex.so` and `libcodex-modehost.so` are bundled from the official ARM64 musl release.
+The Codex binary is modified only to look up `libcodex-modehost.so` instead of
+`codex-code-mode-host`, an equal-length filename change for Android native-library packaging.
+The backend license and upstream notice ship under `usr/share/doc/codex/`.
+The proprietary IDE extension is installed separately by the user.

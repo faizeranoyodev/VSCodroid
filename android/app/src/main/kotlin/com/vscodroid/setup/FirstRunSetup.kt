@@ -551,7 +551,7 @@ class FirstRunSetup(
             // `xdg-open`, and it lands here because this is where the trampoline's
             // table is told to look for it.
             for (script in listOf(
-                "server.js", "process-monitor.js", "platform-fix.js", "dns-proxy.js", "xdg-open.js",
+                "server.js", "process-monitor.js", "platform-fix.js", "codex-launch.js", "dns-proxy.js", "xdg-open.js",
             )) {
                 if (!extractAssetFile(script, "server/$script")) incomplete += script
             }

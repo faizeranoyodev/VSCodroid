@@ -143,6 +143,8 @@ BINARY_MAGIC = (
 # scripts/seccomp-shim.c, the second freestanding, so it links against no libc
 # at all -- it is loaded beside musl's and calls the kernel directly.
 LIBRARIES = {
+    "libcodex.so": ("Codex", "Apache-2.0"),
+    "libcodex-modehost.so": ("Codex", "Apache-2.0"),
     # --- built here, MIT, no third-party obligation ---
     "libglibc-shim.so": ("VSCodroid", "MIT"),
     "libc.so.6": ("VSCodroid", "MIT"),
@@ -274,6 +276,7 @@ TOOLCHAIN_LIBRARIES = {
 # notice legitimately answers for several sonames: ncurses covers libpanelw,
 # which Termux splits into ncurses-ui-libs with no doc directory of its own.
 NOTICE_DIRS = {
+    "Codex": "usr/share/doc/codex",
     # --- copyleft ---
     "Bash": "usr/share/doc/bash",
     "Git": "usr/share/doc/git",

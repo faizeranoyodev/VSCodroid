@@ -260,6 +260,10 @@ const productOverrides = {
     applicationName: 'vscodroid',
     dataFolderName: '.vscodroid',
     quality: 'stable',
+    // The same proposals declared by the pinned Codex extension manifest.
+    extensionEnabledApiProposals: {
+        'openai.chatgpt': ['chatSessionsProvider', 'languageModelProxy']
+    },
     extensionsGallery: {
         serviceUrl: 'https://open-vsx.org/vscode/gallery',
         itemUrl: 'https://open-vsx.org/vscode/item',

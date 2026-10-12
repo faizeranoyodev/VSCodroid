@@ -25,8 +25,9 @@ permissions:
 
 jobs:
   build:
-    # A push rebuilds the server first. Package only after its release exists.
-    if: github.event_name != 'push' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    # Backend/preload-only pushes reuse the pinned server release; server rebuilds
+    # also trigger packaging on successful completion.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     name: Build Debug APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -310,6 +311,9 @@ jobs:
       # DB shipped under AGPL-3.0 for every release before this check existed,
       # having arrived as a transitive Kerberos dependency that no step looked
       # at.
+      - name: Install pinned Codex backend
+        run: python3 scripts/download-codex-backend.py
+
       - name: Check every shipped library is attributed
         run: python3 scripts/check-library-attribution.py
 

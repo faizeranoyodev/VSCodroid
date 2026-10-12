@@ -89,3 +89,6 @@ if (process.platform === 'android') {
     return realLoad.apply(this, arguments);
   };
 }
+
+// Only the pinned Codex extension is redirected; other subprocesses keep their paths.
+if (process.platform === "android") require("./codex-launch.js");

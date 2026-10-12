@@ -73,6 +73,10 @@ step 10/11 "Building native addons and the compatibility shim..."
 # The same, and it can sit here for the same reason: it writes only into jniLibs.
 "$SCRIPT_DIR/build-claude-shim.sh"
 
+
+# Pinned Codex backend lives in Android nativeLibraryDir rather than app data.
+python3 "$SCRIPT_DIR/download-codex-backend.py"
+
 step 11/11 "Building the APK..."
 cd "$ROOT_DIR/android"
 if [ ! -f gradlew ]; then

@@ -138,7 +138,7 @@ android {
         // browser simply times out.
         @Suppress("OldTargetApi")
         targetSdk = 36
-        versionCode = 15
+        versionCode = 16
         versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -1165,6 +1165,8 @@ val requiredJniLibs = listOf(
     // spawns a path that is not there; and a launcher whose --preload names a
     // shim that is not there fails in musl's loader before the CLI runs at all.
     "libclaude-launch.so",
+    "libcodex.so",
+    "libcodex-modehost.so",
     "libexec-trampoline.so",
     "libgit.so",
     "libgit-remote-curl.so",
@@ -1184,6 +1186,8 @@ val requiredJniLibs = listOf(
 val jniLibProducers = mapOf(
     "libbash.so" to "scripts/download-termux-tools.sh",
     "libclaude-launch.so" to "scripts/build-claude-shim.sh",
+    "libcodex.so" to "scripts/download-codex-backend.py",
+    "libcodex-modehost.so" to "scripts/download-codex-backend.py",
     "libexec-trampoline.so" to "scripts/build-exec-trampoline.sh",
     "libgit.so" to "scripts/download-termux-tools.sh",
     "libgit-remote-curl.so" to "scripts/download-termux-tools.sh",

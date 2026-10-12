@@ -1,0 +1,167 @@
+name: Publish Codex image input test
+on:
+  push:
+    branches: [codex-image-downloads]
+    paths: ['.github/workflows/codex-download-release.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      build_run: ${{ steps.retrieve.outputs.build_run }}
+      apk_sha: ${{ steps.verify.outputs.apk_sha }}
+    steps:
+      - name: Retrieve successful build
+        id: retrieve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deadline=$((SECONDS + 1500))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            lint="$(gh api repos/$GITHUB_REPOSITORY/actions/runs/38285087308 --jq .conclusion)"
+            test "$lint" != 'failure'
+            run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=40" --jq '.workflow_runs[] | select(.name == "Build" and .head_sha == "1a48c4dba066d2ea6a24e111cdc1d0dfeae600cf" and .conclusion == "success") | .id' | head -1)"
+            if [ -n "$run" ] && [ "$lint" = 'success' ]; then
+              echo "build_run=$run" >> "$GITHUB_OUTPUT"
+              gh run download "$run" --repo "$GITHUB_REPOSITORY" --name debug-apk --dir downloaded
+              exit 0
+            fi
+            echo "Waiting for rebuilt server, successful APK and lint"
+            sleep 20
+          done
+          echo 'Timed out waiting for the verified APK' >&2
+          exit 1
+      - name: Verify exact payloads and backend protocol
+        id: verify
+        run: |
+          python3 - <<'PY'
+          import zipfile, pathlib, hashlib, subprocess, json, selectors, time, os, tempfile
+          apk = pathlib.Path('downloaded/app-debug.apk')
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          expected = {
+              'libcodex.so': '6290f0b7e6646bf4ff8837d853d9dc16b914d6a12fe2bf114a40f442b65caf6f',
+              'libcodex-modehost.so': 'dfd7ef128561b7dcc3f12462f1acdf811ba2c2bf5d95fa78c6306fd4cf93db68'
+          }
+          runtime = pathlib.Path('runtime').resolve()
+          runtime.mkdir()
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None, 'APK ZIP integrity failed'
+              assert b'26.908.40401' in z.read('assets/codex-launch.js')
+              assert b"'--enable-proposed-api', 'openai.chatgpt'" in z.read('assets/server.js')
+              assert b'VSCODROID_NATIVE_LIB_DIR' in z.read('classes.dex') or any(b'VSCODROID_NATIVE_LIB_DIR' in z.read(n) for n in z.namelist() if n.endswith('.dex'))
+              assert hashlib.sha256(z.read('assets/image-input.js')).hexdigest() == '59a5c05c83a78385f3602ab1427f052bb551133ab67e1d3d792fded348eeec48'
+              manifest = json.loads(z.read('assets/vscode-reh/vscodroid-patches.json'))
+              assert manifest['0028-android-image-attachment-picker.patch'] == 'a2fa8a65d60bc438c43cdc36efce3d5065a754a04849216289d30bb69aaee2ac'
+              assert manifest['0029-copilot-package-dependencies-after-build.patch'] == '08532080fde4dca3a576a591ef75b735287b566faab43922ca93e3487f222c7d'
+              for bundle in ['out/vs/code/browser/workbench/workbench.js', 'out/vs/workbench/api/node/extensionHostProcess.js']:
+                  assert b'VSCodroid Codex attachments' in z.read('assets/vscode-reh/' + bundle), bundle
+              assert any(b'ImageInputWebView' in z.read(n) for n in z.namelist() if n.endswith('.dex'))
+              for name, sha in expected.items():
+                  data = z.read('lib/arm64-v8a/' + name)
+                  assert hashlib.sha256(data).hexdigest() == sha, name + ' digest mismatch'
+                  dest = runtime / name
+                  dest.write_bytes(data)
+                  dest.chmod(0o755)
+          binary = str(runtime / 'libcodex.so')
+          version = subprocess.check_output([binary, '--version'], text=True, timeout=20)
+          assert '0.154.0-alpha.6.2' in version, version
+          print('Backend version:', version.strip())
+          with tempfile.TemporaryDirectory() as home:
+              pathlib.Path(home, '.codex').mkdir()
+              env = dict(os.environ, HOME=home, CODEX_HOME=home + '/.codex')
+              proc = subprocess.Popen([binary, '-c', 'features.code_mode_host=true', 'app-server'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, bufsize=0)
+              selector = selectors.DefaultSelector()
+              selector.register(proc.stdout, selectors.EVENT_READ)
+              try:
+                  for request in [
+                      {'id': 1, 'method': 'initialize', 'params': {'clientInfo': {'name': 'vscodroid_smoke', 'version': '1.0'}, 'capabilities': {'experimentalApi': True}}},
+                      {'id': 2, 'method': 'config/read', 'params': {'includeLayers': False}}
+                  ]:
+                      proc.stdin.write((json.dumps(request) + '\n').encode())
+                      proc.stdin.flush()
+                      deadline = time.monotonic() + 30
+                      while True:
+                          assert selector.select(max(0, deadline-time.monotonic())), 'Backend response timeout'
+                          line = proc.stdout.readline()
+                          assert line, 'Backend exited unexpectedly: ' + proc.stderr.read().decode()
+                          reply = json.loads(line)
+                          if reply.get('id') == request['id']:
+                              assert 'result' in reply and 'error' not in reply, reply
+                              print('PASS:', request['method'])
+                              break
+                          assert time.monotonic() < deadline, 'Backend response timeout'
+                      if request['id'] == 1:
+                          proc.stdin.write(b'{"method":"initialized"}\n')
+                          proc.stdin.flush()
+              finally:
+                  proc.kill()
+                  proc.wait(timeout=10)
+                  selector.close()
+          print('APK SHA256:', digest)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('apk_sha=' + digest + '\n')
+          PY
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN: ${{ needs.verify.outputs.build_run }}
+      APK_SHA: ${{ needs.verify.outputs.apk_sha }}
+      RELEASE_TAG: codex-images-test
+    steps:
+      - name: Retrieve exact verified APK
+        run: |
+          gh run download "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name debug-apk --dir downloaded
+          cp downloaded/app-debug.apk VSCodroid-codex-images.apk
+          echo "$APK_SHA  VSCodroid-codex-images.apk" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Verify Android signature
+        run: |
+          curl --fail --location --output apksig.jar https://dl.google.com/android/maven2/com/android/tools/build/apksig/9.3.1/apksig-9.3.1.jar
+          echo '562cd0a88890960d2ece48e116c61f12872222f1dcc306890799382bc019b201  apksig.jar' | sha256sum --check
+          cat > VerifyApk.java <<'JAVA'
+          import com.android.apksig.ApkVerifier;
+          import java.io.File;
+          class VerifyApk {
+              public static void main(String[] args) throws Exception {
+                  var r = new ApkVerifier.Builder(new File(args[0])).build().verify();
+                  if (!r.isVerified()) throw new IllegalStateException(r.getErrors().toString());
+                  System.out.println("PASS: Android APK signature; v2=" + r.isVerifiedUsingV2Scheme());
+              }
+          }
+          JAVA
+          java --source 17 --class-path apksig.jar VerifyApk.java VSCodroid-codex-images.apk
+      - name: Publish the tested download
+        run: |
+          cat > NOTES.md <<'NOTES'
+          Unofficial VSCodroid Codex image input test APK.
+
+          1. Force-stop your previous VSCodroid app. Install and open this separate test app (`com.vscodroid.codeximages`); your previous installation and data remain available.
+          2. Install Codex extension **26.908.40401**, disable its automatic updates, then sign in.
+          3. In a Codex chat, use + to select an Android image/file. Tap the composer before inserting an image from Gboard's clipboard tiles.
+
+          Codex file-only attachment dialogs now use Android's document picker. Files are copied into a path the Codex backend can read; each file is limited to 20 MB. Folder dialogs still use the workspace filesystem.
+          Keyboard PNG/JPEG/GIF/WebP images are accepted through Android's native input connection and delivered as file paste events through the focused extension-frame chain.
+
+          Retains the working packaged Codex backend and proposed API fixes. Does not add models absent from your account/client's backend catalog.
+
+          Passed build, unit tests, lint, exact runtime/patch hashes, APK integrity/signature and ARM64 Linux backend initialize/config-read smoke tests. Gallery selection and keyboard image insertion still need actual Android device testing. Requires Android 13+ and ARM64.
+
+          Source: https://github.com/faizeranoyodev/VSCodroid/tree/1a48c4dba066d2ea6a24e111cdc1d0dfeae600cf
+          Original project: https://github.com/rmyndharis/VSCodroid
+          NOTES
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" VSCodroid-codex-images.apk SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" VSCodroid-codex-images.apk SHA256SUMS --repo "$GITHUB_REPOSITORY" --target 1a48c4dba066d2ea6a24e111cdc1d0dfeae600cf --title 'VSCodroid Codex image input test APK' --notes-file NOTES.md --prerelease
+          fi

@@ -1,0 +1,135 @@
+name: Publish Codex model catalog test
+on:
+  push:
+    branches: [codex-model-downloads]
+    paths: ['.github/workflows/codex-download-release.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      build_run: ${{ steps.retrieve.outputs.build_run }}
+      apk_sha: ${{ steps.verify.outputs.apk_sha }}
+    steps:
+      - name: Retrieve successful build
+        id: retrieve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deadline=$((SECONDS + 1500))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            lint="$(gh api repos/$GITHUB_REPOSITORY/actions/runs/38324843687 --jq .conclusion)"
+            test "$lint" != 'failure'
+            run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=40" --jq '.workflow_runs[] | select(.name == "Build" and .head_sha == "529c39d7fdb411fa8e1f3ee8f652fc6f106f9333" and .conclusion == "success") | .id' | head -1)"
+            if [ -n "$run" ] && [ "$lint" = 'success' ]; then
+              echo "build_run=$run" >> "$GITHUB_OUTPUT"
+              gh api 'repos/'"$GITHUB_REPOSITORY"'/contents/scripts/test-codex-protocol.py?ref=529c39d7fdb411fa8e1f3ee8f652fc6f106f9333' --jq .content | base64 --decode > test-codex-protocol.py
+              gh run download "$run" --repo "$GITHUB_REPOSITORY" --name debug-apk --dir downloaded
+              exit 0
+            fi
+            echo "Waiting for rebuilt server, successful APK and lint"
+            sleep 20
+          done
+          echo 'Timed out waiting for the verified APK' >&2
+          exit 1
+      - name: Verify exact payloads and backend protocol
+        id: verify
+        run: |
+          python3 - <<'PY'
+          import zipfile, pathlib, hashlib, subprocess, json, selectors, time, os, tempfile
+          apk = pathlib.Path('downloaded/app-debug.apk')
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          expected = {
+              'libcodex.so': '56376ef83694e017e96b5d217d413979b11ba5aec2a4047ed2430208f56f4b64',
+              'libcodex-modehost.so': 'f6477b0357a8cc2291d628962876ecb1a2beb872f71a1e2734363c81ff21700d'
+          }
+          runtime = pathlib.Path('runtime').resolve()
+          runtime.mkdir()
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None, 'APK ZIP integrity failed'
+              assert b'26.908.40401' in z.read('assets/codex-launch.js')
+              assert b"'--enable-proposed-api', 'openai.chatgpt'" in z.read('assets/server.js')
+              assert b'VSCODROID_NATIVE_LIB_DIR' in z.read('classes.dex') or any(b'VSCODROID_NATIVE_LIB_DIR' in z.read(n) for n in z.namelist() if n.endswith('.dex'))
+              assert hashlib.sha256(z.read('assets/image-input.js')).hexdigest() == '59a5c05c83a78385f3602ab1427f052bb551133ab67e1d3d792fded348eeec48'
+              manifest = json.loads(z.read('assets/vscode-reh/vscodroid-patches.json'))
+              assert manifest['0028-android-image-attachment-picker.patch'] == 'a2fa8a65d60bc438c43cdc36efce3d5065a754a04849216289d30bb69aaee2ac'
+              assert manifest['0029-copilot-package-dependencies-after-build.patch'] == '08532080fde4dca3a576a591ef75b735287b566faab43922ca93e3487f222c7d'
+              for bundle in ['out/vs/code/browser/workbench/workbench.js', 'out/vs/workbench/api/node/extensionHostProcess.js']:
+                  assert b'VSCodroid Codex attachments' in z.read('assets/vscode-reh/' + bundle), bundle
+              assert any(b'ImageInputWebView' in z.read(n) for n in z.namelist() if n.endswith('.dex'))
+              for name, sha in expected.items():
+                  data = z.read('lib/arm64-v8a/' + name)
+                  assert hashlib.sha256(data).hexdigest() == sha, name + ' digest mismatch'
+                  dest = runtime / name
+                  dest.write_bytes(data)
+                  dest.chmod(0o755)
+          subprocess.run(['python3', 'test-codex-protocol.py', str(runtime / 'libcodex.so')], check=True, timeout=120)
+          print('APK SHA256:', digest)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('apk_sha=' + digest + '\n')
+          PY
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN: ${{ needs.verify.outputs.build_run }}
+      APK_SHA: ${{ needs.verify.outputs.apk_sha }}
+      RELEASE_TAG: codex-models-test
+    steps:
+      - name: Retrieve exact verified APK
+        run: |
+          gh run download "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name debug-apk --dir downloaded
+          cp downloaded/app-debug.apk VSCodroid-codex-models.apk
+          echo "$APK_SHA  VSCodroid-codex-models.apk" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Verify Android signature
+        run: |
+          curl --fail --location --output apksig.jar https://dl.google.com/android/maven2/com/android/tools/build/apksig/9.3.1/apksig-9.3.1.jar
+          echo '562cd0a88890960d2ece48e116c61f12872222f1dcc306890799382bc019b201  apksig.jar' | sha256sum --check
+          cat > VerifyApk.java <<'JAVA'
+          import com.android.apksig.ApkVerifier;
+          import java.io.File;
+          class VerifyApk {
+              public static void main(String[] args) throws Exception {
+                  var r = new ApkVerifier.Builder(new File(args[0])).build().verify();
+                  if (!r.isVerified()) throw new IllegalStateException(r.getErrors().toString());
+                  System.out.println("PASS: Android APK signature; v2=" + r.isVerifiedUsingV2Scheme());
+              }
+          }
+          JAVA
+          java --source 17 --class-path apksig.jar VerifyApk.java VSCodroid-codex-models.apk
+      - name: Publish the tested download
+        run: |
+          cat > NOTES.md <<'NOTES'
+          Unofficial VSCodroid stable Codex backend/model catalog test APK.
+
+          1. Force-stop previous VSCodroid apps. Install this separate app (`com.vscodroid.codexmodels`, version code 18) and use the installer's Open button. Previous apps and data remain available.
+          2. Install Codex extension **26.908.40401**, disable its automatic updates, and sign in.
+          3. Reload the window, open a new Codex chat, and check for **GPT-6.1 Sol** in the model picker.
+
+          Upgrades the packaged backend from 0.154.0-alpha.6.2 to stable **0.162.1**. The newer bundled catalog includes `gpt-6.1-sol` and the model manager validates cache version and authentication identity. It does not manufacture account access or alter server-returned catalogs.
+
+          Retains the Android Codex attachment picker, native keyboard image input, executable-path redirect and proposed API fixes. Android 13+ and ARM64 required.
+
+          Checks passed: APK build, unit tests, instrumented-test compilation, lint, exact backend/image/patch digests, ZIP integrity and Android APK signature. The exact ARM64 payload passed the pinned IDE's startup, config/model list, auth/account status, remote-control status and filesystem-read requests. Its unauthenticated model list includes gpt-6.1-sol; no inference calls or account credentials were used. Actual Android sign-in, chat, and account-specific model availability still require your device test.
+
+          If the model remains missing, send the filtered model catalog and backend version from the terminal as explained in the repository's setup instructions.
+
+          Source: https://github.com/faizeranoyodev/VSCodroid/tree/529c39d7fdb411fa8e1f3ee8f652fc6f106f9333
+          Original project: https://github.com/rmyndharis/VSCodroid
+          NOTES
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" VSCodroid-codex-models.apk SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" VSCodroid-codex-models.apk SHA256SUMS --repo "$GITHUB_REPOSITORY" --target 529c39d7fdb411fa8e1f3ee8f652fc6f106f9333 --title 'VSCodroid Codex model catalog test APK' --notes-file NOTES.md --prerelease
+          fi

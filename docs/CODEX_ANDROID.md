@@ -23,7 +23,7 @@ manifest. It also passes `--enable-proposed-api openai.chatgpt` to the server,
 which forwards the permission to the browser workbench. No global proposed-API
 permission is granted.
 
-The downloadable APK uses a separate package, `com.vscodroid.codexmodels`,
+The downloadable APK uses a separate package, `com.vscodroid.codexpaste`,
 because hosted CI debug signing keys can differ between runs. It preserves your
 previous app and its data. Force-stop the previous VSCodroid app, install and
 open this test app, then install Codex 26.908.40401 and sign in. The terminal command from the earlier diagnostic now redirects to the
@@ -81,3 +81,11 @@ catalog from the terminal:
 
 Account/workspace availability can still filter models. Selecting a model in
 configuration does not grant access to it.
+
+## Keyboard screenshot paste crash fix
+
+Version code 19 dispatches keyboard image commits to the UI thread before reading
+the WebView URL or evaluating JavaScript. This fixes the reported Android 14
+`InputConnectionHandlerThread` crash. URI reads remain on a bounded background
+worker; queued commits check destruction and the localhost URL on the UI thread.
+The instrumented regression tests require a device; CI only compiles them.

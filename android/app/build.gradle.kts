@@ -138,7 +138,7 @@ android {
         // browser simply times out.
         @Suppress("OldTargetApi")
         targetSdk = 36
-        versionCode = 18
+        versionCode = 19
         versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -278,6 +278,7 @@ android {
             // CI test builds use a separate package because hosted runners generate
             // fresh debug signing keys; never require uninstalling the previous app.
             applicationIdSuffix = when (providers.gradleProperty("codexTestBuild").orNull) {
+                "paste" -> ".codexpaste"
                 "models" -> ".codexmodels"
                 "images" -> ".codeximages"
                 "true" -> ".codextest"

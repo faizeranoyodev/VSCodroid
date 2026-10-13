@@ -109,7 +109,7 @@ writes no results at all, and its exit code is indistinguishable from a genuine
 failure. It is also the only place the skip count appears, and a skipped test
 prints nothing in Gradle's console output.
 
-**At HEAD there are 63 tests across twelve classes.** That figure is not kept by
+**At HEAD there are 65 tests across thirteen classes.** That figure is not kept by
 hand: `scripts/check-instrumented-inventory.py` counts the sources with
 `grep -cE '^\s*@Test'` and fails the build when this file disagrees with them,
 because it had said 22 and then 37 while the suite was neither, and a stale
@@ -127,6 +127,7 @@ XML rather than trusting this paragraph, which is what it is here to encourage.
 
 | File | Covers |
 |---|---|
+| `ImageInputThreadInstrumentedTest` | Keyboard image commits from a background input thread reach a localhost page without violating WebView thread affinity; queued commits after destruction never access the dead WebView. |
 | `ServerHealthTest` | The server becomes reachable, answers its readiness probe, and survives activity recreation. None of this is reachable from a JVM test. |
 | `MainActivityTest` | WebView and ExtraKeyRow initial state; the About dialog's trademark disclaimer, which is a stated legal requirement rather than cosmetic. |
 | `SplashActivityTest` | First-run extraction, and that a later launch skips it. The slow ones. |

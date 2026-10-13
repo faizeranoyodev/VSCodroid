@@ -2,6 +2,8 @@ package com.vscodroid.webview
 
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -26,7 +28,9 @@ class ImageInputWebView @JvmOverloads constructor(
     attrs: AttributeSet? = null,
     defStyleAttr: Int = android.R.attr.webViewStyle,
 ) : WebView(context, attrs, defStyleAttr) {
-    private var closed = false
+    @Volatile private var closed = false
+    private val ui = Handler(Looper.getMainLooper())
+    private val imageMimeTypes = arrayOf("image/png", "image/jpeg", "image/gif", "image/webp")
     private val images = ThreadPoolExecutor(1, 1, 30, TimeUnit.SECONDS, ArrayBlockingQueue(2))
     private val imageScriptAvailable = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
 
@@ -41,47 +45,65 @@ class ImageInputWebView @JvmOverloads constructor(
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
         val original = super.onCreateInputConnection(outAttrs) ?: return null
         if (!imageScriptAvailable) return original
-        val mimeTypes = arrayOf("image/png", "image/jpeg", "image/gif", "image/webp")
-        outAttrs.contentMimeTypes = mimeTypes
+        outAttrs.contentMimeTypes = imageMimeTypes
         return object : InputConnectionWrapper(original, false) {
-            override fun commitContent(content: InputContentInfo, flags: Int, opts: Bundle?): Boolean {
-                val supported = mimeTypes.any { content.description.hasMimeType(it) }
-                val host = (url ?: "").toUri().host
-                if (closed || !supported || content.contentUri.scheme != "content" ||
-                    host !in setOf("127.0.0.1", "localhost", "::1")) return false
-                val granted = flags and InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION != 0
-                try {
-                    if (granted) content.requestPermission()
-                } catch (error: Exception) {
-                    Logger.w("ImageInput", "Keyboard image permission failed: ${error.message}")
-                    return false
-                }
-                val id = JSONObject.quote(UUID.randomUUID().toString())
-                evaluateJavascript("window.__vscodroidImageInput?.begin($id) === true") { ready ->
-                    if (closed || ready != "true") {
-                        if (granted) content.releasePermission()
-                    } else try {
-                        images.execute {
-                            try {
-                                val image = ClipboardBridge(context).readImage(content.contentUri)
-                                post {
-                                    if (!closed) evaluateJavascript(
-                                        "window.__vscodroidImageInput?.deliver($id,$image)", null,
-                                    )
-                                }
-                            } catch (error: Exception) {
-                                Logger.w("ImageInput", "Keyboard image read failed: ${error.message}")
-                            } finally {
-                                if (granted) content.releasePermission()
-                            }
-                        }
-                    } catch (_: RejectedExecutionException) {
-                        if (granted) content.releasePermission()
-                    }
-                }
-                return true
+            override fun commitContent(content: InputContentInfo, flags: Int, opts: Bundle?): Boolean =
+                commitKeyboardImage(content, flags)
+        }
+    }
+
+    /** InputConnection callbacks run on Chromium's input thread, not the WebView thread. */
+    internal fun commitKeyboardImage(content: InputContentInfo, flags: Int): Boolean {
+        val supported = imageMimeTypes.any { content.description.hasMimeType(it) }
+        if (closed || !supported || content.contentUri.scheme != "content") return false
+        val granted = flags and InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION != 0
+        try {
+            // Acquire the IME's URI grant before acknowledging this asynchronous commit.
+            if (granted) content.requestPermission()
+        } catch (error: Exception) {
+            Logger.w("ImageInput", "Keyboard image permission failed: ${error.message}")
+            return false
+        }
+        val release = {
+            if (granted) try {
+                content.releasePermission()
+            } catch (error: Exception) {
+                Logger.w("ImageInput", "Keyboard image permission release failed: ${error.message}")
             }
         }
+        // Never read url or call evaluateJavascript on InputConnectionHandlerThread.
+        // A Handler also runs the cleanup if the view is detached before dispatch.
+        val queued = ui.post {
+            if (closed || (url ?: "").toUri().host !in setOf("127.0.0.1", "localhost", "::1")) {
+                release()
+                return@post
+            }
+            val id = JSONObject.quote(UUID.randomUUID().toString())
+            evaluateJavascript("window.__vscodroidImageInput?.begin($id) === true") { ready ->
+                if (closed || ready != "true") {
+                    release()
+                } else try {
+                    images.execute {
+                        try {
+                            val image = ClipboardBridge(context).readImage(content.contentUri)
+                            ui.post {
+                                if (!closed && (url ?: "").toUri().host in setOf("127.0.0.1", "localhost", "::1")) {
+                                    evaluateJavascript("window.__vscodroidImageInput?.deliver($id,$image)", null)
+                                }
+                            }
+                        } catch (error: Exception) {
+                            Logger.w("ImageInput", "Keyboard image read failed: ${error.message}")
+                        } finally {
+                            release()
+                        }
+                    }
+                } catch (_: RejectedExecutionException) {
+                    release()
+                }
+            }
+        }
+        if (!queued) release()
+        return queued
     }
 
     override fun destroy() {
